@@ -64,7 +64,7 @@ jobs:
 
     steps:
       - name: Ejecutar la Action del Repo Central
-        uses: tu-organizacion/repo-centralized/.github/actions/ci-action@main
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/ci@main
         with:
           workflow_name: ${{ inputs.workflow_name }}
           clickup_api_token: ${{ secrets.clickup_api_token }}
