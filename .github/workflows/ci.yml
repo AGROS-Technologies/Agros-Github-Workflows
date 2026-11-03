@@ -1,0 +1,74 @@
+name: CI Reusable Workflow
+
+on:
+  workflow_call:
+    inputs:
+      workflow_name:
+        required: false
+        type: string
+        default: "ci.yml"
+      allowed_clickup_statuses:
+        required: false
+        type: string
+        default: "in progress,complete,to do"
+      image_name:
+        required: true
+        type: string
+      trivy_image:
+        required: false
+        type: string
+        default: "aquasec/trivy:0.56.2"
+    secrets:
+      clickup_api_token:
+        required: true
+      ghcr_token:
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  continuous-integration:
+    name: CI Pipeline
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_DB: hub_auth_test
+          POSTGRES_USER: hub
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hub -d hub_auth_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      ENV: test
+      FRONTEND_BASE_URL: http://localhost:3000
+      DATABASE_URL: postgresql+psycopg2://hub@localhost:5432/hub_auth_test
+      ALGORITHM: HS256
+      JWT_ISSUER: agrofusion-backendauth
+      ACCESS_TOKEN_EXPIRE_MINUTES: "480"
+      REFRESH_TOKEN_EXPIRE_DAYS: "7"
+      TOKEN_RESET_PASS_EXPIRE: "30"
+      SSO_PRIVATE_KEY_PATH: /tmp/ci_sso_private.pem
+      SMTP_HOST: localhost
+      SMTP_PORT: "587"
+      SMTP_FROM_NAME: AgroFusion-CI
+      SMTP_USER: ci
+      SMTP_PASSWORD: ci
+      EXT_CLIENT_ID: ci
+      EXT_CLIENT_SECRET: ci
+
+    steps:
+      - name: Ejecutar la Action del Repo Central
+        uses: tu-organizacion/repo-centralized/.github/actions/ci-action@main
+        with:
+          workflow_name: ${{ inputs.workflow_name }}
+          clickup_api_token: ${{ secrets.clickup_api_token }}
+          allowed_clickup_statuses: ${{ inputs.allowed_clickup_statuses }}
+          image_name: ${{ inputs.image_name }}
+          trivy_image: ${{ inputs.trivy_image }}
+          ghcr_token: ${{ secrets.ghcr_token || secrets.GITHUB_TOKEN }}
