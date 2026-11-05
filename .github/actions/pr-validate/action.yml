@@ -1,0 +1,115 @@
+name: Validate Pull Request
+description: Validates source/target branch compatibility and version alignment before allowing the Pull Request
+
+inputs:
+  github-token:
+    description: 'GitHub Token or App Installation Token'
+    required: true
+  destiny-ref:
+    description: 'Target branch of the PR (dev, test, main)'
+    required: true
+  source-ref:
+    description: 'Source branch of the PR (feature/*, bugfix/*, fix-merge/*)'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Checkout Source Branch
+      uses: actions/checkout@v4
+      with:
+        token: ${{ inputs.github-token }}
+        ref: ${{ inputs.source-ref }}
+        fetch-depth: 0
+
+    - name: Validate Branch Naming & Compatibility
+      id: validation
+      shell: bash
+      run: |
+        DESTINY="${{ inputs.destiny-ref }}"
+        SOURCE="${{ inputs.source-ref }}"
+        
+        echo "Source: $SOURCE => Destiny: $DESTINY"
+        
+        # 1. Caso especial: fix-merge/* solo puede ir hacia 'dev'
+        if [[ "$SOURCE" == fix-merge/* ]]; then
+          if [ "$DESTINY" != "dev" ]; then
+            echo "ERROR: fix-merge/* branches can only target 'dev'. Got base '$DESTINY'."
+            exit 1
+          fi
+          echo "SUCCESS: fix-merge/* branch, skipping standard compatibility checks."
+          echo "kind=fix-merge" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+        
+        # 2. Ramas de desarrollo: feature/* solo pueden ir a 'dev'
+        if [[ "$SOURCE" == feature/* ]]; then
+          if [ "$DESTINY" != "dev" ]; then
+            echo "ERROR: feature/* branches can only target 'dev'. Got base '$DESTINY'."
+            exit 1
+          fi
+          echo "kind=feature" >> "$GITHUB_OUTPUT"
+
+        # 3. Ramas de corrección: bugfix/* o hotfix/* pueden ir a 'test', 'main' o 'release/*'
+        elif [[ "$SOURCE" == bugfix/* ]] || [[ "$SOURCE" == hotfix/* ]]; then
+          if [ "$DESTINY" != "test" ] && [ "$DESTINY" != "main" ] && [[ ! "$DESTINY" =~ ^release/ ]]; then
+            echo "ERROR: bugfix/* branches can only target 'test', 'main', or 'release/*'. Got base '$DESTINY'."
+            exit 1
+          fi
+          echo "kind=bugfix" >> "$GITHUB_OUTPUT"
+
+        else
+          echo "ERROR: Source branch '$SOURCE' does not follow 'feature/', 'bugfix/', or 'fix-merge/' naming."
+          exit 1
+        fi
+
+        echo "SUCCESS: Branch pairing is valid."
+
+    - name: Validate Fix Merge Branch Existence
+      if: steps.validation.outputs.kind != 'fix-merge'
+      shell: bash
+      run: |
+        PENDING=$(git ls-remote --heads origin 'refs/heads/fix-merge/*')
+
+        if [ -n "$PENDING" ]; then
+          echo "ERROR: There is at least one unresolved 'fix-merge/*' branch in this repository:"
+          echo "$PENDING"
+          echo "Resolve and merge it into 'dev' before opening or continuing new PRs."
+          exit 1
+        fi
+
+        echo "SUCCESS: No pending fix-merge/* branches."
+
+    - name: Validate Bugfix Version Alignment
+      if: steps.validation.outputs.kind == 'bugfix'
+      shell: bash
+      run: |
+        if [ ! -f VERSION ]; then
+          echo "1.0.0" > VERSION
+        fi
+
+        BUGFIX_VERSION=$(tr -d '[:space:]' < VERSION)
+        echo "Bugfix branch version: $BUGFIX_VERSION"
+
+        git fetch origin "${{ inputs.destiny-ref }}" --depth=1
+        
+        if git show "origin/${{ inputs.destiny-ref }}:VERSION" > /tmp/release-version 2>/dev/null; then
+          RELEASE_VERSION=$(tr -d '[:space:]' < /tmp/release-version)
+        else
+          RELEASE_VERSION="1.0.0"
+        fi
+
+        echo "Target branch version: $RELEASE_VERSION"
+
+        if [ "$BUGFIX_VERSION" != "$RELEASE_VERSION" ]; then
+          echo "ERROR: Bugfix branch version ($BUGFIX_VERSION) does not match target branch version ($RELEASE_VERSION)."
+          echo "Merge or rebase the latest '${{ inputs.destiny-ref }}' into your bugfix branch and try again."
+          exit 1
+        fi
+
+        echo "SUCCESS: Versions match between source and target branches."

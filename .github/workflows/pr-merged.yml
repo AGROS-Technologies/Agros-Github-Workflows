@@ -1,0 +1,38 @@
+name: Handle Merged Pull Request
+
+on:
+  workflow_call:
+    secrets:
+      BOT_CLIENT_ID:
+        required: false
+      BOT_APP_PRIVATE_KEY:
+        required: false
+
+jobs:
+  handle-merge:
+    name: Propagate & Bump Version
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    concurrency:
+      group: pr-merged-${{ github.event.pull_request.base.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Generate GitHub App Token
+        id: github-app-token
+        if: ${{ secrets.BOT_CLIENT_ID != '' && secrets.BOT_APP_PRIVATE_KEY != '' }}
+        uses: actions/create-github-app-token@v3
+        with:
+          client-id: ${{ secrets.BOT_CLIENT_ID }}
+          private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Execute Post-Merge Handling
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/pr-merged@main
+        with:
+          github-token: ${{ steps.github-app-token.outputs.token || secrets.GITHUB_TOKEN }}
+          destiny-ref: ${{ github.event.pull_request.base.ref }}
+          source-ref: ${{ github.event.pull_request.head.ref }}

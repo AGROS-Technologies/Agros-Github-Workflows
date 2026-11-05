@@ -1,0 +1,146 @@
+name: Validate and Process Merged Pull Request
+description: Validates branch compatibility, bumps version in VERSION file, tags release and propagates changes.
+
+inputs:
+  github-token:
+    description: 'GitHub Token or App Installation Token'
+    required: true
+  destiny-ref:
+    description: 'Target branch of the PR (dev, test, main)'
+    required: true
+  source-ref:
+    description: 'Source branch of the PR (feature/*, bugfix/*, fix-merge/*)'
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Setup Node
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+
+    - name: Checkout Destiny Branch
+      uses: actions/checkout@v4
+      with:
+        token: ${{ inputs.github-token }}
+        ref: ${{ inputs.destiny-ref }}
+        fetch-depth: 0
+
+    - name: Configure Git Identity & Remote
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${{ github.repository }}.git"
+
+    - name: Determine Merge Kind
+      id: kind
+      shell: bash
+      run: |
+        DESTINY="${{ inputs.destiny-ref }}"
+        SOURCE="${{ inputs.source-ref }}"
+        
+        if [ "$DESTINY" == "dev" ] || [ "$DESTINY" == "test" ]; then
+          echo "kind=standard" >> "$GITHUB_OUTPUT"
+        elif [ "$DESTINY" == "main" ] || [[ "$DESTINY" =~ ^release/ ]]; then
+          echo "kind=release" >> "$GITHUB_OUTPUT"
+        else
+          echo "ERROR: Unrecognized destiny branch '$DESTINY'."
+          exit 1
+        fi
+        
+        if [[ "$SOURCE" == fix-merge/* ]]; then
+          echo "was-fix-merge=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "was-fix-merge=false" >> "$GITHUB_OUTPUT"
+        fi
+
+    # ==================================================================
+    # Case 1: Merge hacia dev/test (Limpieza de ramas efímeras de conflicto)
+    # ==================================================================
+    - name: Cleanup fix-merge Branch
+      if: steps.kind.outputs.was-fix-merge == 'true'
+      shell: bash
+      run: |
+        echo "Deleting resolved conflict branch '${{ inputs.source-ref }}'"
+        git push origin --delete "${{ inputs.source-ref }}" || echo "Branch already gone, skipping."
+
+    # ==================================================================
+    # Case 2: Merge hacia main/release (Incremento de Versión SemVer)
+    # ==================================================================
+    - name: Compute & Apply New Patch Version
+      if: steps.kind.outputs.kind == 'release'
+      id: patch
+      shell: bash
+      run: |
+        if [ ! -f VERSION ]; then
+          echo "1.0.0" > VERSION
+        fi
+
+        CURRENT_VERSION=$(tr -d '[:space:]' < VERSION)
+
+        if [[ ! "$CURRENT_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+          echo "ERROR: Release version '$CURRENT_VERSION' must be clean MAJOR.MINOR.PATCH."
+          exit 1
+        fi
+
+        MAJOR="${BASH_REMATCH[1]}"; MINOR="${BASH_REMATCH[2]}"; PATCH="${BASH_REMATCH[3]}"
+        NEW_PATCH="$((PATCH + 1))"
+        NEW_VERSION="${MAJOR}.${MINOR}.${NEW_PATCH}"
+
+        echo "Bumping $CURRENT_VERSION -> $NEW_VERSION"
+        echo "$NEW_VERSION" > VERSION
+
+        git add VERSION
+        git commit -m "release: bump patch version to $NEW_VERSION [skip ci]"
+        git tag -a "$NEW_VERSION" -m "Release $NEW_VERSION"
+        git push origin "${{ inputs.destiny-ref }}"
+        git push origin "$NEW_VERSION"
+
+        echo "new-version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Attempt Silent Propagation to Dev
+      if: steps.kind.outputs.kind == 'release' && inputs.destiny-ref != 'dev'
+      id: propagate
+      shell: bash
+      run: |
+        git fetch origin dev
+        git checkout dev
+        git pull origin dev
+        
+        if git merge --no-ff --no-commit "origin/${{ inputs.destiny-ref }}"; then
+          git commit -m "release: propagate ${{ inputs.destiny-ref }} (${{ steps.patch.outputs.new-version }}) into dev"
+          git push origin dev
+          echo "conflict=false" >> "$GITHUB_OUTPUT"
+          echo "SUCCESS: Propagated cleanly to dev, no fix-merge branch needed."
+        else
+          echo "conflict=true" >> "$GITHUB_OUTPUT"
+          git merge --abort
+          echo "Merge conflict detected. Will open a fix-merge branch."
+        fi
+
+    - name: Create fix-merge Branch & PR on Conflict
+      if: steps.kind.outputs.kind == 'release' && steps.propagate.outputs.conflict == 'true'
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+      run: |
+        FIX_BRANCH="fix-merge/${{ steps.patch.outputs.new-version }}-to-dev"
+        
+        git checkout "${{ inputs.destiny-ref }}"
+        git checkout -b "$FIX_BRANCH"
+        git push origin "$FIX_BRANCH"
+        
+        gh pr create \
+          --repo "${{ github.repository }}" \
+          --base dev \
+          --head "$FIX_BRANCH" \
+          --title "!!! Resolve conflict: propagate ${{ inputs.destiny-ref }} (${{ steps.patch.outputs.new-version }}) into dev" \
+          --body "Automatic propagation of \`${{ inputs.destiny-ref }}\` after merging \`${{ inputs.source-ref }}\` failed due to a merge conflict with \`dev\`.
+        
+        Please resolve the conflicts (via GitHub's web editor or locally) and merge this PR to complete propagation."
+        
+        echo "SUCCESS: Opened conflict-resolution PR from '$FIX_BRANCH' to 'dev'"

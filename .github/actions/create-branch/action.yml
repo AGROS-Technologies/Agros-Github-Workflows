@@ -1,5 +1,4 @@
 name: Create Validated Git Branch with ClickUp
-author: Yosiber / agrofusion-mdu-prototipo
 description: Validates ClickUp Task Status to create a new Git Branch from a base reference.
 
 inputs:
