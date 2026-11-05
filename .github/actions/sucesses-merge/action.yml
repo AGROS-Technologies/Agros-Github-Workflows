@@ -1,5 +1,4 @@
 name: Success Merge on Protected Branches with Semgrep
-author: Yosiber / agrofusion-mdu-prototipo
 description: Executes Semgrep SAST security analysis on protected branches after a successful merge.
 
 inputs:
