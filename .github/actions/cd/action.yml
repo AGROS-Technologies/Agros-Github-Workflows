@@ -11,10 +11,10 @@ inputs:
     required: true
   db_password:
     description: "Contraseña de la base de datos según el ambiente"
-    required: true
+    required: false
   jwt_secret:
     description: "Secreto para tokens JWT"
-    required: true
+    required: false
 
 runs:
   using: "composite"
@@ -27,6 +27,9 @@ runs:
 
     - name: Contrato de Ambientes (Mapa Rama -> Ambiente)
       shell: bash
+      env:
+        DB_PASSWORD: ${{ inputs.db_password }}
+        JWT_SECRET: ${{ inputs.jwt_secret }}
       run: |
         case "$BRANCH" in
           dev)  echo "ENV_NAME=dev"  >> $GITHUB_ENV; echo "APP_ENV=development" >> $GITHUB_ENV ;;
@@ -34,6 +37,15 @@ runs:
           main) echo "ENV_NAME=prod" >> $GITHUB_ENV; echo "APP_ENV=production"  >> $GITHUB_ENV ;;
           *) echo "Rama no autorizada ($BRANCH)"; exit 1 ;;
         esac
+
+        if [ -z "$DB_PASSWORD" ]; then
+          echo "ERROR: No se configuró la contraseña de base de datos para '$BRANCH'."
+          exit 1
+        fi
+        if [ -z "$JWT_SECRET" ]; then
+          echo "ERROR: No se configuró jwt_secret."
+          exit 1
+        fi
 
         if [ -n "${{ inputs.image_tag_input }}" ]; then
           echo "IMAGE_TAG=${{ inputs.image_tag_input }}" >> $GITHUB_ENV

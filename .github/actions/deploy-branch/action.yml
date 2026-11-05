@@ -8,6 +8,10 @@ inputs:
   environment:
     required: true
     description: '"DEV", "TEST", or "PROD"'
+  image-name:
+    required: false
+    description: 'Full GHCR image name matching the CI workflow'
+    default: ''
   vps-ip:
     required: true
     description: 'VPS IP'
@@ -78,7 +82,8 @@ runs:
           if [ -f VERSION ]; then
             TAG=$(tr -d '[:space:]' < VERSION)
           else
-            TAG="latest"
+            echo "ERROR: VERSION is required to deploy a production image."
+            exit 1
           fi
           SUBDOMAIN="$REPOSITORY_NAME"
         else
@@ -89,7 +94,11 @@ runs:
         fi
 
         FQDN="${SUBDOMAIN}.${{ inputs.hostinger-dns }}"
-        GHCR_IMAGE="ghcr.io/${{ github.repository_owner }}/${REPOSITORY_NAME}"
+        GHCR_IMAGE="${{ inputs.image-name }}"
+        if [ -z "$GHCR_IMAGE" ]; then
+          REPOSITORY_OWNER=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          GHCR_IMAGE="ghcr.io/${REPOSITORY_OWNER}/${REPOSITORY_NAME}"
+        fi
 
         echo "Repository: $REPOSITORY_NAME | Tag: $TAG | FQDN: $FQDN"
         {

@@ -225,6 +225,8 @@ runs:
       run: |
         echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
         echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+        BRANCH_TAG=$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | tr '/' '-')
+        echo "branch_tag=$BRANCH_TAG" >> "$GITHUB_OUTPUT"
 
     - name: Setup Docker Buildx
       uses: docker/setup-buildx-action@v3
@@ -285,8 +287,16 @@ runs:
       shell: bash
       run: docker push "${{ inputs.image_name }}:sha-${{ steps.vars.outputs.short }}"
 
-    - name: Publicar versión SemVer (solo main)
-      if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    - name: Publicar etiqueta de rama (DEV/TEST)
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+      shell: bash
+      run: |
+        docker tag "${{ inputs.image_name }}:sha-${{ steps.vars.outputs.short }}" \
+          "${{ inputs.image_name }}:${{ steps.vars.outputs.branch_tag }}"
+        docker push "${{ inputs.image_name }}:${{ steps.vars.outputs.branch_tag }}"
+
+    - name: Publicar versión SemVer (main y release/*)
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/'))
       shell: bash
       run: |
         V="${{ steps.vars.outputs.version }}"

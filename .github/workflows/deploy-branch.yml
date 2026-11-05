@@ -11,6 +11,11 @@ on:
         required: true
         description: 'Environment to Deploy ("DEV", "TEST", "PROD")'
         type: string
+      image_name:
+        required: false
+        description: 'Full GHCR image name, matching the CI workflow (e.g. ghcr.io/org/app)'
+        type: string
+        default: ''
     secrets:
       VPS_IP:
         required: true
@@ -36,6 +41,7 @@ jobs:
         with:
           target-branch: ${{ inputs.target-branch }}
           environment: ${{ inputs.environment }}
+          image-name: ${{ inputs.image_name }}
           vps-ip: ${{ secrets.VPS_IP }}
           vps-key: ${{ secrets.VPS_PRIVATE_KEY }}
           vps-username: ${{ secrets.VPS_USERNAME }}
