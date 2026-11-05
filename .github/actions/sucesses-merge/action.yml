@@ -1,0 +1,28 @@
+name: Success Merge on Protected Branches with Semgrep
+author: Yosiber / agrofusion-mdu-prototipo
+description: Executes Semgrep SAST security analysis on protected branches after a successful merge.
+
+inputs:
+  semgrep-rules:
+    description: 'Semgrep ruleset to run (e.g., p/default, p/security-audit)'
+    required: false
+    default: 'p/default'
+  semgrep-token:
+    description: 'Semgrep App Token (Optional if using Semgrep Cloud / CLI)'
+    required: false
+    default: ''
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout Application Repository
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Run Semgrep Security Scan
+      uses: semgrep/semgrep-action@v1
+      with:
+        config: ${{ inputs.semgrep-rules }}
+      env:
+        SEMGREP_APP_TOKEN: ${{ inputs.semgrep-token }}

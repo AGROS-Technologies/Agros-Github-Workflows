@@ -1,0 +1,28 @@
+name: Success Merge Branch
+
+on:
+  workflow_call:
+    inputs:
+      semgrep-rules:
+        description: 'Semgrep ruleset to execute'
+        required: false
+        type: string
+        default: 'p/default'
+    secrets:
+      SEMGREP_TOKEN:
+        required: false
+
+jobs:
+  merge-default-branch:
+    name: SAST Scan on Protected Branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+
+    steps:
+      - name: Execute Success Merge Action
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/success-merge@main
+        with:
+          semgrep-rules: ${{ inputs.semgrep-rules }}
+          semgrep-token: ${{ secrets.SEMGREP_TOKEN }}
