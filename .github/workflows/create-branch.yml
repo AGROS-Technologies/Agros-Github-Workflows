@@ -1,43 +1,31 @@
 name: Create Branch
+
 on:
   workflow_call:
     inputs:
       branch-name:
         description: >
-          Branch Name with Jira Feature Issue Key
-          Example Result: feature/KAD-24-add-user-module
+          Nombre de la rama con ID de tarea de ClickUp
+          Ejemplo: 1234abcd-add-user-module
         required: true
         type: string
       branch-type:
         description: >
-          Branch Type to be Created
-          Supported Types: "feature", "bugfix"
+          Tipo de rama a crear ("feature", "bugfix")
         required: true
         type: string
-      allowed-jira-types:
+      allowed-clickup-statuses:
         description: >
-          Comma Separated Allowed Jira Types
-          Example: Feature, Epic, etc.
-        required: true
-        type: string
-      allowed-jira-statuses:
-        description: >
-          Comma Separated Allowed Jira Status
-          Example: NEW, IN PROGRESS
+          Estados permitidos en ClickUp separados por comas
+          Ejemplo: in progress, to do, open
         required: true
         type: string
     secrets:
       BOT_CLIENT_ID:
-        required: true
+        required: false
       BOT_APP_PRIVATE_KEY:
-        required: true
-      JIRA_KEY:
-        required: true
-      JIRA_URL:
-        required: true
-      JIRA_EMAIL:
-        required: true
-      JIRA_TOKEN:
+        required: false
+      CLICKUP_API_TOKEN:
         required: true
 
 jobs:
@@ -50,9 +38,10 @@ jobs:
     steps:
       - name: Generate GitHub App Token
         id: github-app-token
+        if: ${{ secrets.BOT_CLIENT_ID != '' && secrets.BOT_APP_PRIVATE_KEY != '' }}
         uses: actions/create-github-app-token@v3
         with:
-          client-id: ${{ secrets.BOT_CLIENT_ID}}
+          client-id: ${{ secrets.BOT_CLIENT_ID }}
           private-key: ${{ secrets.BOT_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
 
@@ -61,10 +50,6 @@ jobs:
         with:
           branch-name: ${{ inputs.branch-name }}
           branch-type: ${{ inputs.branch-type }}
-          allowed-jira-types: ${{ inputs.allowed-jira-types }}
-          allowed-jira-statuses: ${{ inputs.allowed-jira-statuses }}
-          jira-url: ${{ secrets.JIRA_URL }}
-          jira-email: ${{ secrets.JIRA_EMAIL }}
-          jira-token: ${{ secrets.JIRA_TOKEN }}
-          jira-key: ${{ secrets.JIRA_KEY }}
-          github-token: ${{ steps.github-app-token.outputs.token }}
+          allowed-clickup-statuses: ${{ inputs.allowed-clickup-statuses }}
+          clickup-api-token: ${{ secrets.CLICKUP_API_TOKEN }}
+          github-token: ${{ steps.github-app-token.outputs.token || secrets.GITHUB_TOKEN }}

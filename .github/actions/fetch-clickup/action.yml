@@ -1,0 +1,58 @@
+name: Get ClickUp Task Info
+description: Fetch Task Status and Name from ClickUp API v2
+
+inputs:
+  task-id:
+    description: 'ClickUp Task ID (e.g. 1234abcd or #1234abcd)'
+    required: true
+  clickup-token:
+    description: 'ClickUp API Personal Token'
+    required: true
+
+outputs:
+  status:
+    description: "Task Status Name"
+    value: ${{ steps.fetch-clickup.outputs.status }}
+  name:
+    description: "Task Name / Title"
+    value: ${{ steps.fetch-clickup.outputs.name }}
+
+runs:
+  using: "composite"
+  steps:
+    - name: Call ClickUp API
+      id: fetch-clickup
+      shell: bash
+      env:
+        TASK_INPUT: ${{ inputs.task-id }}
+        CLICKUP_TOKEN: ${{ inputs.clickup-token }}
+      run: |
+        # Extraer únicamente el ID alfanumérico limpio (7 a 9 caracteres)
+        CLEAN_ID=$(echo "$TASK_INPUT" | grep -oP '(#|CU-)?\K[a-zA-Z0-9]{7,9}' | head -1 || true)
+        
+        if [ -z "$CLEAN_ID" ]; then
+          echo "ERROR: No valid ClickUp Task ID found in input '$TASK_INPUT'"
+          exit 1
+        fi
+
+        echo "Fetching ClickUp Task: $CLEAN_ID..."
+
+        RESPONSE_CODE=$(curl -s -w "%{http_code}" \
+          -H "Authorization: $CLICKUP_TOKEN" \
+          -H "Content-Type: application/json" \
+          "https://api.clickup.com/api/v2/task/$CLEAN_ID/" \
+          -o response.json
+        )
+
+        if [ "$RESPONSE_CODE" -ne 200 ]; then
+          echo "ERROR: Could not fetch task $CLEAN_ID from ClickUp. HTTP Code: $RESPONSE_CODE"
+          exit 1
+        fi
+
+        TASK_STATUS=$(jq -r '.status.status // empty' response.json)
+        TASK_NAME=$(jq -r '.name // empty' response.json)
+
+        echo "ClickUp Task Data -> Name: '$TASK_NAME' | Status: '$TASK_STATUS'"
+        
+        echo "status=$TASK_STATUS" >> "$GITHUB_OUTPUT"
+        echo "name=$TASK_NAME" >> "$GITHUB_OUTPUT"

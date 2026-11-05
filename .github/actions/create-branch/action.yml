@@ -1,4 +1,5 @@
 name: Create Validated Git Branch with ClickUp
+author: Yosiber / agrofusion-mdu-prototipo
 description: Validates ClickUp Task Status to create a new Git Branch from a base reference.
 
 inputs:
@@ -190,7 +191,6 @@ runs:
 
         execSync(`git remote set-url origin https://x-access-token:${token}@github.com/${repository}.git`);
 
-        // Bot estándar de GitHub Actions
         execSync('git config user.name "github-actions[bot]"');
         execSync('git config user.email "github-actions[bot]@users.noreply.github.com"');
 
