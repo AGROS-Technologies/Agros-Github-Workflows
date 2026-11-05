@@ -99,7 +99,7 @@ runs:
           [ -z "$COMMIT_MSG" ] && continue
           echo "Validando commit: $COMMIT_MSG"
 
-          # Busca patrones de ID de ClickUp (ej: #CU-1234 o #1234abcd oCU-1234)
+          # Busca patrones de ID de ClickUp (ej: #CU-1234 o #1234abcd o CU-1234)
           TASK_ID=$(echo "$COMMIT_MSG" | grep -oP '(#|CU-)?\K[a-zA-Z0-9]{7,9}' | head -1 || true)
         
           if [ -z "$TASK_ID" ]; then

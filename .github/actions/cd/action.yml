@@ -1,100 +1,100 @@
-name: CD
+name: "CD Hub Auth Action"
+description: "Ejecuta despliegue, migraciones Alembic, healthcheck y rollback automático"
 
-on:
-  workflow_run:
-    workflows: ["CI"]
-    types: [completed]
-    branches: [dev, test, main]
-  workflow_dispatch:
-    inputs:
-      image_tag:
-        description: "Tag de la imagen en GHCR (ej. sha-a36a6a0 o 0.1.0)"
-        required: false
-        default: ""
+inputs:
+  image_tag_input:
+    description: "Tag de imagen opcional pasado por workflow_dispatch"
+    required: false
+    default: ""
+  ghcr_token:
+    description: "Token para GHCR"
+    required: true
+  db_password:
+    description: "Contraseña de la base de datos según el ambiente"
+    required: true
+  jwt_secret:
+    description: "Secreto para tokens JWT"
+    required: true
 
-permissions:
-  contents: write
-  packages: read
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout del repositorio
+      uses: actions/checkout@v4
+      with:
+        ref: "${{ env.SHA }}"
+        fetch-depth: 0
 
-jobs:
-  cd:
-    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'workflow_run' && github.event.workflow_run.conclusion == 'success')
-    runs-on: ubuntu-latest
-    env:
-      BRANCH: ${{ github.event.workflow_run.head_branch || github.ref_name }}
-      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
-    steps:
-      - name: Checkout del repositorio
-        uses: actions/checkout@v4
-        with:
-          ref: "${{ env.SHA }}"
-          fetch-depth: 0
+    - name: Contrato de Ambientes (Mapa Rama -> Ambiente)
+      shell: bash
+      run: |
+        case "$BRANCH" in
+          dev)  echo "ENV_NAME=dev"  >> $GITHUB_ENV; echo "APP_ENV=development" >> $GITHUB_ENV ;;
+          test) echo "ENV_NAME=test" >> $GITHUB_ENV; echo "APP_ENV=staging"     >> $GITHUB_ENV ;;
+          main) echo "ENV_NAME=prod" >> $GITHUB_ENV; echo "APP_ENV=production"  >> $GITHUB_ENV ;;
+          *) echo "Rama no autorizada ($BRANCH)"; exit 1 ;;
+        esac
 
-      - name: Contrato de Ambientes (Mapa Rama -> Ambiente)
-        run: |
-          case "$BRANCH" in
-            dev)  echo "ENV_NAME=dev"  >> $GITHUB_ENV; echo "APP_ENV=development" >> $GITHUB_ENV ;;
-            test) echo "ENV_NAME=test" >> $GITHUB_ENV; echo "APP_ENV=staging"     >> $GITHUB_ENV ;;
-            main) echo "ENV_NAME=prod" >> $GITHUB_ENV; echo "APP_ENV=production"  >> $GITHUB_ENV ;;
-            *) echo "Rama no autorizada ($BRANCH)"; exit 1 ;;
-          esac
-          if [ -n "${{ github.event.inputs.image_tag }}" ]; then
-            echo "IMAGE_TAG=${{ github.event.inputs.image_tag }}" >> $GITHUB_ENV
-          else
-            echo "IMAGE_TAG=sha-${SHA::7}" >> $GITHUB_ENV
-          fi
+        if [ -n "${{ inputs.image_tag_input }}" ]; then
+          echo "IMAGE_TAG=${{ inputs.image_tag_input }}" >> $GITHUB_ENV
+        else
+          echo "IMAGE_TAG=sha-${SHA::7}" >> $GITHUB_ENV
+        fi
 
-      - name: Login en GitHub Container Registry (GHCR)
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+    - name: Login en GitHub Container Registry (GHCR)
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.ghcr_token }}
 
-      - name: Identificar versión estable previa (N-1 para Rollback)
-        run: |
-          if git rev-parse -q --verify "refs/tags/deployed/$ENV_NAME" >/dev/null; then
-            echo "PREV_TAG=sha-$(git rev-parse --short=7 deployed/$ENV_NAME)" >> $GITHUB_ENV
-          fi
+    - name: Identificar versión estable previa (N-1 para Rollback)
+      shell: bash
+      run: |
+        if git rev-parse -q --verify "refs/tags/deployed/$ENV_NAME" >/dev/null; then
+          echo "PREV_TAG=sha-$(git rev-parse --short=7 deployed/$ENV_NAME)" >> $GITHUB_ENV
+        fi
 
-      - name: Etapa 4 (Migrar) y Etapa 5 (Desplegar)
-        env:
-          DB_PASSWORD: ${{ (env.ENV_NAME == 'prod' && secrets.PROD_DB_PASSWORD) || (env.ENV_NAME == 'test' && secrets.TEST_DB_PASSWORD) || secrets.DEV_DB_PASSWORD }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-        run: |
-          docker compose -f deploy/docker-compose.cd.yml pull
-          docker compose -f deploy/docker-compose.cd.yml up -d db
-          sleep 8
-          # Etapa 4: Migraciones de Base de Datos (modo no-op controlado si migrations/versions está vacío)
-          docker compose -f deploy/docker-compose.cd.yml run --rm app alembic upgrade head || echo "Aviso: migrations/versions sin scripts (reportado en hallazgos)"
-          # Etapa 5: Despliegue del contenedor de aplicación
-          docker compose -f deploy/docker-compose.cd.yml up -d app
-          sleep 5
+    - name: Etapa 4 (Migrar) y Etapa 5 (Desplegar)
+      shell: bash
+      env:
+        DB_PASSWORD: ${{ inputs.db_password }}
+        JWT_SECRET: ${{ inputs.jwt_secret }}
+      run: |
+        docker compose -f deploy/docker-compose.cd.yml pull
+        docker compose -f deploy/docker-compose.cd.yml up -d db
+        sleep 8
+        docker compose -f deploy/docker-compose.cd.yml run --rm app alembic upgrade head || echo "Aviso: migrations/versions sin scripts"
+        docker compose -f deploy/docker-compose.cd.yml up -d app
+        sleep 5
 
-      - name: Etapa 6 - Verificar Salud (/api/health)
-        id: verify
-        run: |
-          if ! curl --fail --retry 12 --retry-delay 5 --retry-all-errors http://localhost:8000/api/health; then
-            echo "=== Logs del contenedor app ==="
-            docker compose -f deploy/docker-compose.cd.yml logs app
-            exit 1
-          fi
+    - name: Etapa 6 - Verificar Salud (/api/health)
+      id: verify
+      shell: bash
+      run: |
+        if ! curl --fail --retry 12 --retry-delay 5 --retry-all-errors http://localhost:8000/api/health; then
+          echo "=== Logs del contenedor app ==="
+          docker compose -f deploy/docker-compose.cd.yml logs app
+          exit 1
+        fi
 
-      - name: Etapa 7 - Revertir (Rollback Automático a N-1)
-        if: failure() && steps.verify.outcome == 'failure' && env.PREV_TAG != ''
-        env:
-          DB_PASSWORD: ${{ (env.ENV_NAME == 'prod' && secrets.PROD_DB_PASSWORD) || (env.ENV_NAME == 'test' && secrets.TEST_DB_PASSWORD) || secrets.DEV_DB_PASSWORD }}
-          JWT_SECRET: ${{ secrets.JWT_SECRET }}
-        run: |
-          echo "FALLO EN HEALTHCHECK: Ejecutando Rollback automático a $PREV_TAG"
-          IMAGE_TAG=$PREV_TAG docker compose -f deploy/docker-compose.cd.yml up -d app
-          sleep 5
-          curl --fail --retry 12 --retry-delay 5 --retry-all-errors http://localhost:8000/api/health
+    - name: Etapa 7 - Revertir (Rollback Automático a N-1)
+      if: failure() && steps.verify.outcome == 'failure' && env.PREV_TAG != ''
+      shell: bash
+      env:
+        DB_PASSWORD: ${{ inputs.db_password }}
+        JWT_SECRET: ${{ inputs.jwt_secret }}
+      run: |
+        echo "FALLO EN HEALTHCHECK: Ejecutando Rollback automático a $PREV_TAG"
+        IMAGE_TAG=$PREV_TAG docker compose -f deploy/docker-compose.cd.yml up -d app
+        sleep 5
+        curl --fail --retry 12 --retry-delay 5 --retry-all-errors http://localhost:8000/api/health
 
-      - name: Registrar versión estable desplegada
-        if: success()
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f "deployed/$ENV_NAME" "$SHA"
-          git push -f origin "deployed/$ENV_NAME"
+    - name: Registrar versión estable desplegada
+      if: success()
+      shell: bash
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git tag -f "deployed/$ENV_NAME" "$SHA"
+        git push -f origin "deployed/$ENV_NAME"

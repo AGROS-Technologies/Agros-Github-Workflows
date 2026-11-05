@@ -1,4 +1,4 @@
-name: CI
+name: CI Reusable Workflow
 
 on:
   workflow_call:
@@ -64,7 +64,7 @@ jobs:
 
     steps:
       - name: Ejecutar la Action del Repo Central
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/ci@main
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/ci-action@main
         with:
           workflow_name: ${{ inputs.workflow_name }}
           clickup_api_token: ${{ secrets.clickup_api_token }}
