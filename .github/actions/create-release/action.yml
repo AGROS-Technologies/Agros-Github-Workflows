@@ -1,0 +1,152 @@
+name: Create Release Branch with GHCR
+author: Yosiber / agrofusion-mdu-prototipo
+description: Creates a new release branch and tag based on VERSION file and pushes to GHCR.
+
+inputs:
+  github-token:
+    required: true
+    description: 'GitHub App Installation Token'
+
+runs:
+  using: "composite"
+  steps:
+    - name: Initial Checkout
+      uses: actions/checkout@v4
+      with:
+        token: ${{ inputs.github-token }}
+        fetch-depth: 0
+        ref: ${{ github.event.repository.default_branch }}
+
+    - name: Validate Triggering Branch is Default Branch
+      shell: bash
+      run: |
+        CURRENT_BRANCH="${{ github.ref_name }}"
+        DEFAULT_BRANCH="${{ github.event.repository.default_branch }}"
+        
+        if [ "$CURRENT_BRANCH" != "$DEFAULT_BRANCH" ]; then
+          echo "ERROR: create-release must be triggered from '$DEFAULT_BRANCH'. Current ref: '$CURRENT_BRANCH'."
+          exit 1
+        fi
+        echo "SUCCESS: Triggered from '$DEFAULT_BRANCH'."
+
+    - name: Validate Branch Commits Availability
+      shell: bash
+      run: |
+        TOTAL_COMMITS=$(git rev-list --count HEAD)
+        if [ "$TOTAL_COMMITS" -le 1 ]; then
+          echo "ERROR: No commits found besides the initial setup commit."
+          exit 1
+        fi
+        echo "SUCCESS: Repository has commits beyond initial setup."
+
+    - name: Compute Release Branch & Tag Names from VERSION
+      id: versions-names
+      shell: bash
+      run: |
+        if [ ! -f VERSION ]; then
+          echo "1.0.0" > VERSION
+        fi
+
+        CURRENT_VERSION=$(tr -d '[:space:]' < VERSION)
+        echo "Current develop version: $CURRENT_VERSION"
+        
+        if [[ ! "$CURRENT_VERSION" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+          echo "ERROR: Version '$CURRENT_VERSION' must follow MAJOR.MINOR.PATCH format."
+          exit 1
+        fi
+
+        MAJOR="${BASH_REMATCH[1]}"
+        MINOR="${BASH_REMATCH[2]}"
+        PATCH="${BASH_REMATCH[3]}"
+        
+        RELEASE_BRANCH="release/${MAJOR}.${MINOR}"
+        RELEASE_TAG="${MAJOR}.${MINOR}.${PATCH}"
+        NEXT_MINOR="$((MINOR + 1))"
+        NEXT_DEVELOP_VERSION="${MAJOR}.${NEXT_MINOR}.0"
+        
+        echo "Release Branch: $RELEASE_BRANCH"
+        echo "Release Tag: $RELEASE_TAG"
+        echo "Next Develop Version: $NEXT_DEVELOP_VERSION"
+
+        if git ls-remote --exit-code origin "refs/heads/$RELEASE_BRANCH" >/dev/null 2>&1; then
+          echo "ERROR: Branch '$RELEASE_BRANCH' already exists on remote origin."
+          exit 1
+        fi
+
+        if git ls-remote --exit-code origin "refs/tags/$RELEASE_TAG" >/dev/null 2>&1; then
+          echo "ERROR: Tag '$RELEASE_TAG' already exists on remote origin."
+          exit 1
+        fi
+
+        {
+          echo "release-branch=$RELEASE_BRANCH"
+          echo "release-tag=$RELEASE_TAG"
+          echo "next-develop-version=$NEXT_DEVELOP_VERSION"
+        } >> "$GITHUB_OUTPUT"
+
+    - name: Configure Git Identity & Remote
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github-token }}
+        REPOSITORY_FULL_NAME: ${{ github.repository }}
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "github-actions[bot]@users.noreply.github.com"
+        git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${REPOSITORY_FULL_NAME}.git"
+
+    - name: Create Release Branch & Push Tag
+      shell: bash
+      run: |
+        RELEASE_BRANCH="${{ steps.versions-names.outputs.release-branch }}"
+        RELEASE_TAG="${{ steps.versions-names.outputs.release-tag }}"
+
+        git checkout -b "$RELEASE_BRANCH"
+        git tag -a "$RELEASE_TAG" -m "Release $RELEASE_TAG"
+
+        git push origin "$RELEASE_BRANCH"
+        git push origin "$RELEASE_TAG"
+        echo "SUCCESS: Branch '$RELEASE_BRANCH' and tag '$RELEASE_TAG' pushed to origin."
+
+    - name: Resolve GHCR Image Name
+      id: ghcr-repo
+      shell: bash
+      run: |
+        REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        IMAGE_NAME="ghcr.io/${REPO_LOWER}"
+        echo "image-name=$IMAGE_NAME" >> "$GITHUB_OUTPUT"
+
+    - name: Setup Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Login to GHCR
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github-token }}
+
+    - name: Build & Push Release Docker Image to GHCR
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: ./Dockerfile
+        push: true
+        tags: ${{ steps.ghcr-repo.outputs.image-name }}:${{ steps.versions-names.outputs.release-tag }}
+        labels: |
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.version=${{ steps.versions-names.outputs.release-tag }}
+
+    - name: Bump Version on Default Branch
+      shell: bash
+      run: |
+        DEVELOP_BRANCH="${{ github.event.repository.default_branch }}"
+        NEXT_VERSION="${{ steps.versions-names.outputs.next-develop-version }}"
+        
+        git checkout "$DEVELOP_BRANCH"
+        echo "$NEXT_VERSION" > VERSION
+        
+        git add VERSION
+        git commit -m "chore: bump develop version to $NEXT_VERSION [skip ci]"
+        git push origin "$DEVELOP_BRANCH"
+        
+        echo "SUCCESS: '$DEVELOP_BRANCH' bumped to $NEXT_VERSION."
