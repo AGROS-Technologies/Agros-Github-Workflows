@@ -6,7 +6,7 @@
 2. **Workflows centrales:** `.github/workflows/ci-python.yml`, `ci-node.yml`, `ci-java.yml` y `dast.yml` orquestan el orden del pipeline; no implementan los pasos de compilación o escaneo.
 3. **Actions centrales:** `.github/actions/security-scan`, `python-ci`, `node-ci`, `java-ci`, `docker-build-scan-publish` y `dast-zap` encapsulan los pasos. Dentro de cada action se integran las herramientas de terceros (Gitleaks, Semgrep, pip-audit, npm audit, OWASP Dependency-Check, Trivy y ZAP).
 
-Las actions por stack también pueden consumirse desde otros workflows, pero la interfaz recomendada para los repositorios de aplicaciones es el workflow correspondiente. La action `ci` conserva el comportamiento integrado específico de Hub Auth; delega Gitleaks y Semgrep a `security-scan`, pues su preparación de base de datos, cuarentena de pruebas y prueba de humo no son genéricas.
+Las actions por stack también pueden consumirse desde otros workflows, pero la interfaz recomendada para los repositorios de aplicaciones es el workflow correspondiente. Los workflows centrales son independientes de una aplicación; la configuración específica de cada proyecto debe permanecer en el repositorio consumidor.
 
 Todos los workflows y composite actions de este repositorio usan referencias centrales `agrofusion-mdu-prototipo/Ops-Github-Workflows/...@main`. Cambia `main` por un tag o SHA cuando se requiera fijar una versión de la interfaz reutilizable.
 
@@ -52,8 +52,6 @@ on:
 ```
 
 Las ejecuciones programadas hacen los análisis y las pruebas, pero no publican imágenes.
-
-`ci.yml` se conserva como entrada de compatibilidad para el workflow anterior de Hub Auth (incluye ClickUp, PostgreSQL, Pytest y su prueba de humo). Para proyectos Python distintos, usa `ci-python.yml`.
 
 ## CD y DAST
 
