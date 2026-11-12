@@ -1,0 +1,88 @@
+name: Java CI and SCA
+description: Builds and tests Maven or Gradle projects, then audits dependencies with OWASP Dependency-Check.
+
+inputs:
+  java_version:
+    description: Java version
+    required: false
+    default: "21"
+  build_tool:
+    description: Build tool used by the project
+    required: false
+    default: "maven"
+  project_directory:
+    description: Directory containing the Java project, relative to the repository root
+    required: false
+    default: "."
+  dependency_check_args:
+    description: Additional arguments passed to OWASP Dependency-Check
+    required: false
+    default: "--failOnCVSS 7.0"
+
+runs:
+  using: composite
+  steps:
+    - name: Validate Java build tool
+      shell: bash
+      env:
+        BUILD_TOOL: ${{ inputs.build_tool }}
+      run: |
+        if [[ "$BUILD_TOOL" != "maven" && "$BUILD_TOOL" != "gradle" ]]; then
+          echo "ERROR: build_tool must be maven or gradle (received: $BUILD_TOOL)."
+          exit 1
+        fi
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: temurin
+        java-version: ${{ inputs.java_version }}
+        cache: ${{ inputs.build_tool }}
+        cache-dependency-path: |
+          ${{ inputs.project_directory }}/pom.xml
+          ${{ inputs.project_directory }}/**/pom.xml
+          ${{ inputs.project_directory }}/build.gradle
+          ${{ inputs.project_directory }}/build.gradle.kts
+          ${{ inputs.project_directory }}/**/build.gradle
+          ${{ inputs.project_directory }}/**/build.gradle.kts
+
+    - name: Run Maven verification
+      if: inputs.build_tool == 'maven'
+      shell: bash
+      working-directory: ${{ inputs.project_directory }}
+      run: |
+        if [ -x ./mvnw ]; then
+          ./mvnw -B verify
+        else
+          mvn -B verify
+        fi
+
+    - name: Run Gradle build
+      if: inputs.build_tool == 'gradle'
+      shell: bash
+      working-directory: ${{ inputs.project_directory }}
+      run: |
+        if [ ! -x ./gradlew ]; then
+          echo "ERROR: build_tool=gradle requires an executable ./gradlew wrapper."
+          exit 1
+        fi
+        ./gradlew build
+
+    - name: Audit Java dependencies with OWASP Dependency-Check
+      uses: dependency-check/Dependency-Check_Action@main
+      env:
+        JAVA_HOME: /opt/jdk
+      with:
+        project: ${{ github.repository }}
+        path: ${{ inputs.project_directory }}
+        format: HTML
+        out: reports/dependency-check
+        args: ${{ inputs.dependency_check_args }}
+
+    - name: Upload Dependency-Check report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: dependency-check-report
+        path: reports/dependency-check/
+        if-no-files-found: warn

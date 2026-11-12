@@ -1,0 +1,82 @@
+name: CI Java Reusable Workflow
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "Nombre completo de la imagen GHCR; vacío si el proyecto no genera imagen"
+        required: false
+        type: string
+        default: ""
+      project_directory:
+        description: "Directorio del proyecto Java relativo a la raíz del repositorio"
+        required: false
+        type: string
+        default: "."
+      java_version:
+        required: false
+        type: string
+        default: "21"
+      build_tool:
+        description: "Herramienta de build usada para ejecutar las pruebas"
+        required: false
+        type: string
+        default: "maven"
+      dependency_check_args:
+        description: "Argumentos de OWASP Dependency-Check"
+        required: false
+        type: string
+        default: "--failOnCVSS 7.0"
+      dockerfile:
+        description: "Ruta del Dockerfile relativa al contexto de build"
+        required: false
+        type: string
+        default: "./Dockerfile"
+      semgrep_rules:
+        required: false
+        type: string
+        default: "p/default"
+      trivy_image:
+        required: false
+        type: string
+        default: "aquasec/trivy:0.56.2"
+    secrets:
+      ghcr_token:
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  continuous-integration:
+    name: Java CI, SAST, SCA e imagen
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Escaneo de secretos y SAST
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/security-scan@main
+        with:
+          semgrep_rules: ${{ inputs.semgrep_rules }}
+
+      - name: Build, pruebas y SCA Java
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/java-ci@main
+        with:
+          project_directory: ${{ inputs.project_directory }}
+          java_version: ${{ inputs.java_version }}
+          build_tool: ${{ inputs.build_tool }}
+          dependency_check_args: ${{ inputs.dependency_check_args }}
+
+      - name: Construir, escanear y publicar imagen
+        if: inputs.image_name != ''
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/docker-build-scan-publish@main
+        with:
+          image_name: ${{ inputs.image_name }}
+          dockerfile: ${{ inputs.dockerfile }}
+          build_context: ${{ inputs.project_directory }}
+          trivy_image: ${{ inputs.trivy_image }}
+          ghcr_token: ${{ secrets.ghcr_token || secrets.GITHUB_TOKEN }}

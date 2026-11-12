@@ -1,0 +1,109 @@
+name: Build, Scan and Publish Docker Image
+description: Builds a Docker image, scans it with Trivy, and publishes it to GHCR only after a successful scan.
+
+inputs:
+  image_name:
+    description: Full GHCR image name
+    required: true
+  dockerfile:
+    description: Dockerfile path relative to the build context
+    required: false
+    default: "./Dockerfile"
+  build_context:
+    description: Directory used as the Docker build context
+    required: false
+    default: "."
+  trivy_image:
+    description: Trivy container image
+    required: false
+    default: "aquasec/trivy:0.56.2"
+  ghcr_token:
+    description: Token with permission to publish the image
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Calculate image tags
+      id: vars
+      shell: bash
+      run: |
+        echo "short=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+        echo "branch_tag=$(printf '%s' "$GITHUB_REF_NAME" | tr '[:upper:]' '[:lower:]' | tr '/' '-')" >> "$GITHUB_OUTPUT"
+        if [ -f VERSION ]; then
+          echo "version=$(tr -d '[:space:]' < VERSION)" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Build Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: ${{ inputs.build_context }}
+        file: ${{ inputs.dockerfile }}
+        load: true
+        push: false
+        tags: ${{ inputs.image_name }}:sha-${{ steps.vars.outputs.short }}
+        labels: |
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.revision=${{ github.sha }}
+          org.opencontainers.image.version=${{ steps.vars.outputs.version }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+
+    - name: Scan image with Trivy
+      shell: bash
+      env:
+        TRIVY_IMAGE: ${{ inputs.trivy_image }}
+        IMAGE_NAME: ${{ inputs.image_name }}
+        IMAGE_TAG: sha-${{ steps.vars.outputs.short }}
+      run: |
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v trivy-cache:/root/.cache \
+          "$TRIVY_IMAGE" image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 \
+          "$IMAGE_NAME:$IMAGE_TAG"
+
+    - name: Log in to GHCR
+      if: github.event_name == 'push'
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.ghcr_token || github.token }}
+
+    - name: Publish SHA image
+      if: github.event_name == 'push'
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image_name }}
+        IMAGE_TAG: sha-${{ steps.vars.outputs.short }}
+      run: docker push "$IMAGE_NAME:$IMAGE_TAG"
+
+    - name: Publish branch image
+      if: github.event_name == 'push' && startsWith(github.ref, 'refs/heads/')
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image_name }}
+        IMAGE_SHA_TAG: sha-${{ steps.vars.outputs.short }}
+        BRANCH_TAG: ${{ steps.vars.outputs.branch_tag }}
+      run: |
+        docker tag "$IMAGE_NAME:$IMAGE_SHA_TAG" "$IMAGE_NAME:$BRANCH_TAG"
+        docker push "$IMAGE_NAME:$BRANCH_TAG"
+
+    - name: Publish SemVer image
+      if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/release/')) && steps.vars.outputs.version != ''
+      shell: bash
+      env:
+        IMAGE_NAME: ${{ inputs.image_name }}
+        IMAGE_SHA_TAG: sha-${{ steps.vars.outputs.short }}
+        VERSION: ${{ steps.vars.outputs.version }}
+      run: |
+        if docker manifest inspect "$IMAGE_NAME:$VERSION" > /dev/null 2>&1; then
+          echo "::notice::Version $VERSION already exists in GHCR; it will not be overwritten."
+        else
+          docker tag "$IMAGE_NAME:$IMAGE_SHA_TAG" "$IMAGE_NAME:$VERSION"
+          docker push "$IMAGE_NAME:$VERSION"
+        fi

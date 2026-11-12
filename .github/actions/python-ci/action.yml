@@ -1,0 +1,57 @@
+name: Python CI and SCA
+description: Installs Python dependencies, audits them, and runs the project's tests.
+
+inputs:
+  python_version:
+    description: Python version
+    required: false
+    default: "3.11"
+  project_directory:
+    description: Directory containing the Python project, relative to the repository root
+    required: false
+    default: "."
+  requirements_file:
+    description: Dependency requirements file, relative to the Python project directory
+    required: false
+    default: "requirements.txt"
+  test_command:
+    description: Shell command used to run project tests
+    required: false
+    default: "pytest -q"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python_version }}
+        cache: pip
+        cache-dependency-path: ${{ inputs.project_directory }}/${{ inputs.requirements_file }}
+
+    - name: Install dependencies
+      shell: bash
+      working-directory: ${{ inputs.project_directory }}
+      env:
+        REQUIREMENTS_FILE: ${{ inputs.requirements_file }}
+      run: |
+        if [ ! -f "$REQUIREMENTS_FILE" ]; then
+          echo "ERROR: Requirements file not found: $REQUIREMENTS_FILE"
+          exit 1
+        fi
+        python -m pip install --upgrade pip
+        python -m pip install -r "$REQUIREMENTS_FILE" pip-audit
+
+    - name: Audit Python dependencies with pip-audit
+      shell: bash
+      working-directory: ${{ inputs.project_directory }}
+      env:
+        REQUIREMENTS_FILE: ${{ inputs.requirements_file }}
+      run: pip-audit -r "$REQUIREMENTS_FILE"
+
+    - name: Run Python tests
+      shell: bash
+      working-directory: ${{ inputs.project_directory }}
+      env:
+        TEST_COMMAND: ${{ inputs.test_command }}
+      run: bash -euo pipefail -c "$TEST_COMMAND"

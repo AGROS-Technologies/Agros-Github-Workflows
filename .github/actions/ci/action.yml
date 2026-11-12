@@ -1,5 +1,5 @@
 name: "CI Hub Auth Action con ClickUp"
-description: "Valida commits en ClickUp, corre Gitleaks, Pytest con Postgres, Trivy y Build/Push a GHCR"
+description: "Valida commits en ClickUp, ejecuta controles de seguridad Python, Pytest, Trivy y publica en GHCR"
 
 inputs:
   workflow_name:
@@ -19,6 +19,10 @@ inputs:
     description: "Imagen de Trivy"
     required: false
     default: "aquasec/trivy:0.56.2"
+  semgrep_rules:
+    description: "Reglas Semgrep que se ejecutarán"
+    required: false
+    default: "p/default"
   python_version:
     description: "Versión de Python"
     required: false
@@ -144,12 +148,10 @@ runs:
           exit 1
         fi
 
-    - name: Escaneo de secretos (Gitleaks)
-      shell: bash
-      run: |
-        curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz \
-          | tar -xz gitleaks
-        ./gitleaks git --redact -v --exit-code 1
+    - name: Escaneos centralizados de secretos y SAST
+      uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/security-scan@main
+      with:
+        semgrep_rules: ${{ inputs.semgrep_rules }}
 
     - name: Configurar Python
       uses: actions/setup-python@v5
@@ -159,7 +161,13 @@ runs:
 
     - name: Instalar dependencias
       shell: bash
-      run: pip install -r requirements.txt
+      run: |
+        pip install -r requirements.txt
+        pip install pip-audit
+
+    - name: Analizar dependencias Python (pip-audit)
+      shell: bash
+      run: pip-audit -r requirements.txt
 
     - name: Generar SECRET_KEY y llave SSO efímeras
       shell: bash
@@ -261,13 +269,7 @@ runs:
         docker exec smoke id -u | grep -vx 0 && echo "OK: el contenedor no corre como root"
         docker rm -f smoke
 
-    - name: Etapa 3a - Trivy sobre dependencias
-      shell: bash
-      run: |
-        docker run --rm -v "$PWD:/src" -v trivy-cache:/root/.cache "${{ inputs.trivy_image }}" \
-          fs --scanners vuln --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 /src
-
-    - name: Etapa 3b - Trivy sobre la imagen construida
+    - name: Escanear imagen Docker con Trivy
       shell: bash
       run: |
         docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v trivy-cache:/root/.cache "${{ inputs.trivy_image }}" \

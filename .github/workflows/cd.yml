@@ -1,4 +1,4 @@
-name: CD Reusable Workflow
+name: CD Hub Auth Reusable Workflow
 
 on:
   workflow_call:
@@ -42,7 +42,7 @@ jobs:
       SHA: ${{ inputs.sha_override || github.event.workflow_run.head_sha || github.sha }}
     steps:
       - name: Llama a la Action de CD del Repo Central
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/cd-action@main
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/cd@main
         with:
           image_tag_input: ${{ inputs.image_tag }}
           ghcr_token: ${{ secrets.ghcr_token || secrets.GITHUB_TOKEN }}

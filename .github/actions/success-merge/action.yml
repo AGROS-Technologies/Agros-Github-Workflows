@@ -1,5 +1,5 @@
 name: Success Merge on Protected Branches with Semgrep
-description: Executes Semgrep SAST security analysis on protected branches after a successful merge.
+description: Runs Semgrep SAST security analysis on protected branches after a successful merge.
 
 inputs:
   semgrep-rules:

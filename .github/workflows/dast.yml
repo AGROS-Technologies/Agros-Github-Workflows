@@ -1,0 +1,28 @@
+name: DAST Reusable Workflow (OWASP ZAP)
+
+on:
+  workflow_call:
+    inputs:
+      target_url:
+        description: "URL de la aplicación desplegada que el llamador está autorizado a probar"
+        required: true
+        type: string
+      zap_image:
+        description: "Imagen Docker oficial de OWASP ZAP"
+        required: false
+        type: string
+        default: "ghcr.io/zaproxy/zaproxy:stable"
+
+permissions:
+  contents: read
+
+jobs:
+  dast:
+    name: DAST pasivo controlado con OWASP ZAP
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ejecutar DAST centralizado con OWASP ZAP
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/dast-zap@main
+        with:
+          target_url: ${{ inputs.target_url }}
+          zap_image: ${{ inputs.zap_image }}

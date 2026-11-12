@@ -1,0 +1,76 @@
+name: CI Node.js Reusable Workflow
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "Nombre completo de la imagen GHCR; vacío si el proyecto no genera imagen"
+        required: false
+        type: string
+        default: ""
+      project_directory:
+        description: "Directorio del proyecto Node.js relativo a la raíz del repositorio"
+        required: false
+        type: string
+        default: "."
+      node_version:
+        required: false
+        type: string
+        default: "22"
+      test_script:
+        description: "Nombre del script de pruebas de package.json"
+        required: false
+        type: string
+        default: "test"
+      dockerfile:
+        description: "Ruta del Dockerfile relativa al contexto de build"
+        required: false
+        type: string
+        default: "./Dockerfile"
+      semgrep_rules:
+        required: false
+        type: string
+        default: "p/default"
+      trivy_image:
+        required: false
+        type: string
+        default: "aquasec/trivy:0.56.2"
+    secrets:
+      ghcr_token:
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  continuous-integration:
+    name: Node.js CI, SAST, SCA e imagen
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Escaneo de secretos y SAST
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/security-scan@main
+        with:
+          semgrep_rules: ${{ inputs.semgrep_rules }}
+
+      - name: Dependencias y pruebas Node.js
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/node-ci@main
+        with:
+          project_directory: ${{ inputs.project_directory }}
+          node_version: ${{ inputs.node_version }}
+          test_script: ${{ inputs.test_script }}
+
+      - name: Construir, escanear y publicar imagen
+        if: inputs.image_name != ''
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/docker-build-scan-publish@main
+        with:
+          image_name: ${{ inputs.image_name }}
+          dockerfile: ${{ inputs.dockerfile }}
+          build_context: ${{ inputs.project_directory }}
+          trivy_image: ${{ inputs.trivy_image }}
+          ghcr_token: ${{ secrets.ghcr_token || secrets.GITHUB_TOKEN }}

@@ -1,0 +1,82 @@
+name: CI Python Reusable Workflow
+
+on:
+  workflow_call:
+    inputs:
+      image_name:
+        description: "Nombre completo de la imagen GHCR; vacío si el proyecto no genera imagen"
+        required: false
+        type: string
+        default: ""
+      project_directory:
+        description: "Directorio del proyecto Python relativo a la raíz del repositorio"
+        required: false
+        type: string
+        default: "."
+      python_version:
+        required: false
+        type: string
+        default: "3.11"
+      requirements_file:
+        description: "Archivo de dependencias relativo al directorio del proyecto"
+        required: false
+        type: string
+        default: "requirements.txt"
+      test_command:
+        description: "Comando de pruebas"
+        required: false
+        type: string
+        default: "pytest -q"
+      dockerfile:
+        description: "Ruta del Dockerfile relativa al contexto de build"
+        required: false
+        type: string
+        default: "./Dockerfile"
+      semgrep_rules:
+        required: false
+        type: string
+        default: "p/default"
+      trivy_image:
+        required: false
+        type: string
+        default: "aquasec/trivy:0.56.2"
+    secrets:
+      ghcr_token:
+        required: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  continuous-integration:
+    name: Python CI, SAST, SCA e imagen
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Escaneo de secretos y SAST
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/security-scan@main
+        with:
+          semgrep_rules: ${{ inputs.semgrep_rules }}
+
+      - name: Dependencias y pruebas Python
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/python-ci@main
+        with:
+          project_directory: ${{ inputs.project_directory }}
+          python_version: ${{ inputs.python_version }}
+          requirements_file: ${{ inputs.requirements_file }}
+          test_command: ${{ inputs.test_command }}
+
+      - name: Construir, escanear y publicar imagen
+        if: inputs.image_name != ''
+        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/docker-build-scan-publish@main
+        with:
+          image_name: ${{ inputs.image_name }}
+          dockerfile: ${{ inputs.dockerfile }}
+          build_context: ${{ inputs.project_directory }}
+          trivy_image: ${{ inputs.trivy_image }}
+          ghcr_token: ${{ secrets.ghcr_token || secrets.GITHUB_TOKEN }}

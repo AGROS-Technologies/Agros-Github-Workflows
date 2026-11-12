@@ -1,0 +1,71 @@
+name: OWASP ZAP Baseline DAST
+description: Runs a passive OWASP ZAP Baseline scan and blocks high-risk findings.
+
+inputs:
+  target_url:
+    description: URL of the deployed application that this workflow is authorized to scan
+    required: true
+  zap_image:
+    description: Official OWASP ZAP Docker image
+    required: false
+    default: "ghcr.io/zaproxy/zaproxy:stable"
+
+runs:
+  using: composite
+  steps:
+    - name: Run passive ZAP Baseline scan
+      shell: bash
+      env:
+        TARGET_URL: ${{ inputs.target_url }}
+        ZAP_IMAGE: ${{ inputs.zap_image }}
+      run: |
+        case "$TARGET_URL" in
+          http://*|https://*) ;;
+          *)
+            echo "ERROR: target_url must use http:// or https://."
+            exit 1
+            ;;
+        esac
+
+        docker run --rm -v "$PWD:/zap/wrk/:rw" "$ZAP_IMAGE" \
+          zap-baseline.py -t "$TARGET_URL" \
+          -J /zap/wrk/zap-report.json \
+          -r /zap/wrk/zap-report.html \
+          -w /zap/wrk/zap-report.md -I
+
+    - name: Summarize findings and block high-risk alerts
+      shell: bash
+      run: |
+        if [ ! -s zap-report.json ] || ! jq -e '.site | type == "array"' zap-report.json > /dev/null; then
+          echo "ERROR: ZAP did not produce a valid JSON report."
+          exit 1
+        fi
+
+        HIGH_COUNT=$(jq '[.site[]?.alerts[]? | select((.riskcode | tonumber) >= 3)] | length' zap-report.json)
+        MEDIUM_COUNT=$(jq '[.site[]?.alerts[]? | select((.riskcode | tonumber) == 2)] | length' zap-report.json)
+        LOW_COUNT=$(jq '[.site[]?.alerts[]? | select((.riskcode | tonumber) == 1)] | length' zap-report.json)
+
+        {
+          echo "## OWASP ZAP Baseline"
+          echo "- High-risk alerts: $HIGH_COUNT (blocking)"
+          echo "- Medium-risk alerts: $MEDIUM_COUNT"
+          echo "- Low-risk alerts: $LOW_COUNT"
+        } >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$HIGH_COUNT" -gt 0 ]; then
+          echo "ERROR: ZAP found $HIGH_COUNT high-risk alerts."
+          jq -r '.site[]?.alerts[]? | select((.riskcode | tonumber) >= 3) | "- \(.alert) (risk \(.riskdesc))"' zap-report.json \
+            >> "$GITHUB_STEP_SUMMARY"
+          exit 1
+        fi
+
+    - name: Upload ZAP report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: zap-baseline-report
+        path: |
+          zap-report.html
+          zap-report.json
+          zap-report.md
+        if-no-files-found: warn

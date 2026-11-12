@@ -1,0 +1,87 @@
+name: Node.js CI and SCA
+description: Installs locked npm dependencies, audits them, and runs the project's tests.
+
+inputs:
+  node_version:
+    description: Node.js version
+    required: false
+    default: "22"
+  project_directory:
+    description: Directory containing package.json and package-lock.json, relative to the repository root
+    required: false
+    default: "."
+  test_script:
+    description: npm script used to run project tests
+    required: false
+    default: "test"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node_version }}
+        cache: npm
+        cache-dependency-path: ${{ inputs.project_directory }}/package-lock.json
+
+    - name: Install locked dependencies
+      shell: bash
+      working-directory: ${{ inputs.project_directory }}
+      run: npm ci
+
+    - name: Audit npm dependencies
+      shell: bash
+      working-directory: ${{ inputs.project_directory }}
+      run: npm audit --json > npm-audit.json
+      continue-on-error: true
+
+    - name: Summarize npm audit findings
+      shell: bash
+      working-directory: ${{ inputs.project_directory }}
+      run: |
+        node <<'NODE'
+        const fs = require('node:fs');
+        let report;
+        try {
+          report = JSON.parse(fs.readFileSync('npm-audit.json', 'utf8'));
+        } catch (error) {
+          console.error(`ERROR: npm audit did not produce valid JSON: ${error.message}`);
+          process.exit(1);
+        }
+
+        if (report.error || !report.metadata?.vulnerabilities) {
+          console.error(`ERROR: npm audit could not complete: ${JSON.stringify(report.error || report)}`);
+          process.exit(1);
+        }
+
+        const counts = report.metadata.vulnerabilities;
+        const summary = [
+          '## npm audit',
+          `- Critical: ${counts.critical}`,
+          `- High: ${counts.high}`,
+          `- Moderate: ${counts.moderate}`,
+          `- Low: ${counts.low}`,
+        ].join('\n');
+        fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, `${summary}\n`);
+
+        if (counts.critical > 0 || counts.high > 0) {
+          console.error('ERROR: npm audit found high or critical vulnerabilities.');
+          process.exit(1);
+        }
+        NODE
+
+    - name: Upload npm audit report
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: npm-audit-report
+        path: ${{ inputs.project_directory }}/npm-audit.json
+        if-no-files-found: warn
+
+    - name: Run Node.js tests
+      shell: bash
+      working-directory: ${{ inputs.project_directory }}
+      env:
+        TEST_SCRIPT: ${{ inputs.test_script }}
+      run: npm run "$TEST_SCRIPT"
