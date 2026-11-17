@@ -53,6 +53,27 @@ runs:
         cache-from: type=gha
         cache-to: type=gha,mode=max
 
+    - name: Trivy full report
+      id: trivy-full-report
+      if: inputs.image_name != ''
+      continue-on-error: true
+      shell: bash
+      env:
+        TRIVY_IMAGE: ${{ inputs.trivy_image }}
+        IMAGE_NAME: ${{ inputs.image_name }}
+        IMAGE_TAG: sha-${{ steps.vars.outputs.short }}
+      run: |
+        REPORT_DIR=$(mktemp -d "$RUNNER_TEMP/trivy.XXXXXX")
+        echo "report-path=$REPORT_DIR/trivy-report.json" >> "$GITHUB_OUTPUT"
+        echo "artifact-name=trivy-full-report-${GITHUB_SHA::7}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${REPORT_DIR##*.}" >> "$GITHUB_OUTPUT"
+        docker run --rm \
+          -v /var/run/docker.sock:/var/run/docker.sock \
+          -v trivy-cache:/root/.cache \
+          -v "$REPORT_DIR:/out" \
+          "$TRIVY_IMAGE" image --severity CRITICAL,HIGH,MEDIUM,LOW --exit-code 0 \
+          --format json --output /out/trivy-report.json \
+          "$IMAGE_NAME:$IMAGE_TAG"
+
     - name: Scan image with Trivy
       shell: bash
       env:
@@ -65,6 +86,39 @@ runs:
           -v trivy-cache:/root/.cache \
           "$TRIVY_IMAGE" image --severity CRITICAL,HIGH --ignore-unfixed --exit-code 1 \
           "$IMAGE_NAME:$IMAGE_TAG"
+
+    - name: Upload Trivy full report
+      if: always() && inputs.image_name != '' && steps.trivy-full-report.outputs.report-path != ''
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.trivy-full-report.outputs.artifact-name }}
+        path: ${{ steps.trivy-full-report.outputs.report-path }}
+        retention-days: 30
+        if-no-files-found: warn
+
+    - name: Summarize Trivy full report
+      if: always() && inputs.image_name != ''
+      shell: bash
+      env:
+        REPORT_PATH: ${{ steps.trivy-full-report.outputs.report-path }}
+      run: |
+        if [ ! -s "$REPORT_PATH" ]; then
+          echo "## Trivy full report" >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning::No se pudo generar el reporte JSON completo de Trivy."
+          echo "Reporte no disponible; revisar el log del paso Trivy full report." >> "$GITHUB_STEP_SUMMARY"
+          exit 0
+        fi
+
+        {
+          echo "## Trivy: vulnerabilidades por severidad"
+          echo "| Severidad | Con corrección | Sin corrección | Total |"
+          echo "| --- | ---: | ---: | ---: |"
+          for severity in CRITICAL HIGH MEDIUM LOW; do
+            fixed=$(jq --arg s "$severity" '[.Results[]?.Vulnerabilities[]? | select(.Severity == $s and ((.FixedVersion // "") != ""))] | length' "$REPORT_PATH")
+            unfixed=$(jq --arg s "$severity" '[.Results[]?.Vulnerabilities[]? | select(.Severity == $s and ((.FixedVersion // "") == ""))] | length' "$REPORT_PATH")
+            printf '| %s | %s | %s | %s |\n' "$severity" "$fixed" "$unfixed" "$((fixed + unfixed))"
+          done
+        } >> "$GITHUB_STEP_SUMMARY"
 
     - name: Log in to GHCR
       if: github.event_name == 'push'

@@ -40,7 +40,7 @@ jobs:
 
 Omite `image_name` y el secreto GHCR si el proyecto solo requiere los controles, el SCA y las pruebas, sin construir ni publicar una imagen. Si se publica una imagen, el llamador debe conceder `packages: write` al `GITHUB_TOKEN` o proporcionar un `ghcr_token` con ese permiso.
 
-Los tres workflows ejecutan Gitleaks y Semgrep. Si `image_name` se proporciona, construyen la imagen, bloquean vulnerabilidades CRITICAL/HIGH sin solución disponible en Trivy y solo después la publican. npm audit bloquea HIGH/CRITICAL; Dependency-Check usa CVSS 7.0 como umbral. `pip-audit` no ofrece un filtro de severidad equivalente y por eso bloquea cualquier vulnerabilidad reportada, que es un criterio más estricto. En Node.js se puede elegir el script npm de pruebas mediante `test_script`. Los pipelines con imagen publican etiquetas SHA y de rama, y una etiqueta SemVer cuando existe `VERSION`.
+Los tres workflows ejecutan Gitleaks y Semgrep. Si `image_name` se proporciona, construyen la imagen, bloquean vulnerabilidades CRITICAL/HIGH con corrección disponible en Trivy y solo después la publican. npm audit bloquea HIGH/CRITICAL; Dependency-Check usa CVSS 7.0 como umbral. `pip-audit` no ofrece un filtro de severidad equivalente y por eso bloquea cualquier vulnerabilidad reportada, que es un criterio más estricto. En Node.js se puede elegir el script npm de pruebas mediante `test_script`. Los pipelines con imagen publican etiquetas SHA y de rama, y una etiqueta SemVer cuando existe `VERSION`.
 
 Para cubrir la revisión semanal de SCA indicada en la matriz, el repositorio consumidor debe invocar su workflow de CI tanto en `pull_request` como en un evento `schedule`. Por ejemplo, agrega `schedule` junto a los triggers del workflow llamador:
 
