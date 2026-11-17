@@ -27,6 +27,6 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Execute Release Creation Action
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/create-release@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/create-release@main
         with:
           github-token: ${{ steps.github-app-token.outputs.token || secrets.GITHUB_TOKEN }}

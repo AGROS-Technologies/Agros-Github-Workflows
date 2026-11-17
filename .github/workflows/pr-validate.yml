@@ -27,7 +27,7 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Execute Pull Request Validation
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/pr-validate@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/pr-validate@main
         with:
           github-token: ${{ steps.github-app-token.outputs.token || secrets.GITHUB_TOKEN }}
           destiny-ref: ${{ github.event.pull_request.base.ref }}

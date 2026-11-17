@@ -46,7 +46,7 @@ jobs:
           owner: ${{ github.repository_owner }}
 
       - name: Execute Branch Creation Action
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/create-branch@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/create-branch@main
         with:
           branch-name: ${{ inputs.branch-name }}
           branch-type: ${{ inputs.branch-type }}

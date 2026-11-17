@@ -22,7 +22,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Ejecutar DAST centralizado con OWASP ZAP
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/dast-zap@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/dast-zap@main
         with:
           target_url: ${{ inputs.target_url }}
           zap_image: ${{ inputs.zap_image }}

@@ -1,5 +1,5 @@
 name: Create Release Branch with GHCR
-author: Yosiber / agrofusion-mdu-prototipo
+author: Yosiber / AGROS-Technologies
 description: Creates a new release branch and tag based on VERSION file and pushes to GHCR.
 
 inputs:

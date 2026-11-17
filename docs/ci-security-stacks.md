@@ -8,7 +8,7 @@
 
 Las actions por stack también pueden consumirse desde otros workflows, pero la interfaz recomendada para los repositorios de aplicaciones es el workflow correspondiente. Los workflows centrales son independientes de una aplicación; la configuración específica de cada proyecto debe permanecer en el repositorio consumidor.
 
-Todos los workflows y composite actions de este repositorio usan referencias centrales `agrofusion-mdu-prototipo/Ops-Github-Workflows/...@main`. Cambia `main` por un tag o SHA cuando se requiera fijar una versión de la interfaz reutilizable.
+Todos los workflows y composite actions de este repositorio usan referencias centrales `AGROS-Technologies/Agros-Github-Workflows/...@main`. Cambia `main` por un tag o SHA cuando se requiera fijar una versión de la interfaz reutilizable.
 
 ## CI
 
@@ -29,7 +29,7 @@ permissions:
 
 jobs:
   ci:
-    uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/workflows/ci-java.yml@main
+    uses: AGROS-Technologies/Agros-Github-Workflows/.github/workflows/ci-java.yml@main
     with:
       image_name: ghcr.io/mi-organizacion/mi-aplicacion
       java_version: "21"
@@ -62,7 +62,7 @@ Las ejecuciones programadas hacen los análisis y las pruebas, pero no publican 
 ```yaml
   dast:
     needs: deploy
-    uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/workflows/dast.yml@main
+    uses: AGROS-Technologies/Agros-Github-Workflows/.github/workflows/dast.yml@main
     with:
       target_url: https://mi-aplicacion.dev.example.com
 ```

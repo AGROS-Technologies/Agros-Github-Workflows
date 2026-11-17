@@ -1,5 +1,5 @@
 name: Update Environment Variables on VPS
-author: Yosiber / agrofusion-mdu-prototipo
+author: Yosiber / AGROS-Technologies
 description: Updates (or creates) the .env for a branch folder on the VPS, skipping PORT.
 
 inputs:

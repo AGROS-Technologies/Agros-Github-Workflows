@@ -30,7 +30,7 @@ jobs:
 
     steps:
       - name: Execute Teardown Branch Action
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/teardown-branch@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/teardown-branch@main
         with:
           target-branch: ${{ inputs.target-branch }}
           environment: ${{ inputs.environment }}

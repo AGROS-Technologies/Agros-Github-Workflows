@@ -22,7 +22,7 @@ jobs:
 
     steps:
       - name: Execute Success Merge Action
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/success-merge@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/success-merge@main
         with:
           semgrep-rules: ${{ inputs.semgrep-rules }}
           semgrep-token: ${{ secrets.SEMGREP_TOKEN }}

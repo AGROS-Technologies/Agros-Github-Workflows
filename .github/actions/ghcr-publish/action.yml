@@ -7,7 +7,7 @@ inputs:
     description: 'GitHub Personal Access Token or GITHUB_TOKEN with packages:write permission'
   image-name:
     required: false
-    description: 'Full image name (e.g. ghcr.io/agrofusion-mdu-prototipo/hub-auth). If omitted, inferred from context.'
+    description: 'Full image name (e.g. ghcr.io/agros-technologies/hub-auth). If omitted, inferred from context.'
     default: ''
   image-tag:
     required: true

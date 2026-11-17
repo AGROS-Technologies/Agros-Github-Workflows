@@ -26,7 +26,7 @@ jobs:
 
     steps:
       - name: Execute Update Environment Variables Action
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/update-env@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/update-env@main
         with:
           target-branch: ${{ inputs.target-branch }}
           env-vars: ${{ inputs.env-vars }}

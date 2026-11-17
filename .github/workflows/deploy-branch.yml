@@ -37,7 +37,7 @@ jobs:
 
     steps:
       - name: Execute Deploy Branch Action
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/deploy-branch@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/deploy-branch@main
         with:
           target-branch: ${{ inputs.target-branch }}
           environment: ${{ inputs.environment }}

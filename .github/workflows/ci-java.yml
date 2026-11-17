@@ -59,12 +59,12 @@ jobs:
           fetch-depth: 0
 
       - name: Escaneo de secretos y SAST
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/security-scan@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/security-scan@main
         with:
           semgrep_rules: ${{ inputs.semgrep_rules }}
 
       - name: Build, pruebas y SCA Java
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/java-ci@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/java-ci@main
         with:
           project_directory: ${{ inputs.project_directory }}
           java_version: ${{ inputs.java_version }}
@@ -73,7 +73,7 @@ jobs:
 
       - name: Construir, escanear y publicar imagen
         if: inputs.image_name != ''
-        uses: agrofusion-mdu-prototipo/Ops-Github-Workflows/.github/actions/docker-build-scan-publish@main
+        uses: AGROS-Technologies/Agros-Github-Workflows/.github/actions/docker-build-scan-publish@main
         with:
           image_name: ${{ inputs.image_name }}
           dockerfile: ${{ inputs.dockerfile }}
